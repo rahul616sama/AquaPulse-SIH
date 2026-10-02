@@ -2,316 +2,448 @@ import math
 import numpy as np
 import streamlit as st
 import plotly.graph_objects as go
-from scipy.signal import chirp
+from scipy.signal import chirp, spectrogram
 
-st.set_page_config(page_title="AquaPulse", page_icon="🌊", layout="wide")
+st.set_page_config(
+    page_title="AquaPulse",
+    page_icon="🌊",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
+# ------------------------------------------------------------
+# THEME / LAYOUT
+# ------------------------------------------------------------
 st.markdown("""
 <style>
-.block-container {padding-top: 1.1rem; padding-bottom: 1.5rem;}
-.ap-title {font-size: 2.8rem; font-weight: 850; line-height: 1; margin-bottom: .15rem;}
-.ap-sub {font-size: 1rem; opacity: .72; margin-bottom: .4rem;}
-.ap-note {
-    padding: 12px 14px;
-    border: 1px solid rgba(120,120,120,.22);
-    border-radius: 14px;
-    background: rgba(127,127,127,.035);
+:root{
+    --bg:#04111f;
+    --panel:#071c31;
+    --panel2:#0a2741;
+    --line:#0d4f7e;
+    --cyan:#23c8ff;
+    --blue:#1687ff;
+    --green:#38e587;
+    --text:#eaf7ff;
+    --muted:#8fb4cc;
 }
-.ap-good {border-left: 4px solid #2e8b57;}
-.ap-bad {border-left: 4px solid #c0392b;}
-div[data-testid="stMetric"] {
-    border: 1px solid rgba(127,127,127,.18);
-    border-radius: 13px;
-    padding: 8px 10px;
+html, body, [data-testid="stAppViewContainer"] {
+    background:
+      radial-gradient(circle at 75% 10%, rgba(20,100,170,.15), transparent 32%),
+      linear-gradient(180deg,#03101c 0%,#061728 100%);
+    color:var(--text);
 }
+[data-testid="stHeader"]{background:transparent;}
+.block-container{
+    max-width:1500px;
+    padding-top:.75rem;
+    padding-bottom:1.1rem;
+}
+h1,h2,h3,p{color:var(--text);}
+.ap-header{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    margin-bottom:2px;
+}
+.ap-logo{
+    width:54px;height:54px;border-radius:14px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:30px;
+    border:1px solid #0e5f94;
+    background:linear-gradient(180deg,#0b2e4c,#061827);
+}
+.ap-title{
+    font-size:2.9rem;font-weight:900;line-height:.92;
+    letter-spacing:-.04em;
+}
+.ap-title span{color:var(--cyan);}
+.ap-sub{color:#b8d5e7;font-size:.92rem;margin-top:5px;}
+.panel{
+    border:1px solid var(--line);
+    background:linear-gradient(180deg,rgba(8,31,52,.96),rgba(4,21,37,.96));
+    border-radius:12px;
+    padding:12px 14px;
+    box-shadow:inset 0 0 22px rgba(22,135,255,.03);
+}
+.panel-title{
+    font-size:.86rem;font-weight:800;color:#dff6ff;
+    margin-bottom:8px;
+}
+.mini-label{
+    color:var(--muted);font-size:.72rem;text-transform:uppercase;
+    letter-spacing:.05em;
+}
+.value-line{
+    display:flex;justify-content:space-between;gap:10px;
+    border-bottom:1px solid rgba(50,125,170,.22);
+    padding:5px 0;font-size:.82rem;
+}
+.value-line:last-child{border-bottom:none;}
+.decision{
+    color:#d9f6ff;font-size:.82rem;line-height:1.38;margin:5px 0;
+}
+.decision::before{content:"✓ ";color:var(--green);font-weight:900;}
+.status-good{
+    border:1px solid #1aa65f;
+    background:linear-gradient(180deg,rgba(13,91,58,.22),rgba(3,35,27,.36));
+    border-radius:12px;
+    padding:18px 20px;
+    min-height:112px;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+}
+.status-bad{
+    border:1px solid #b74949;
+    background:linear-gradient(180deg,rgba(110,30,30,.22),rgba(45,12,12,.36));
+    border-radius:12px;
+    padding:18px 20px;
+    min-height:112px;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+}
+.status-main{font-size:1.18rem;font-weight:900;color:var(--green);}
+.status-bad .status-main{color:#ff7d7d;}
+.status-sub{font-size:.78rem;color:#b7cedd;margin-top:3px;}
+div[data-testid="stMetric"]{
+    border:1px solid #0d4f7e;
+    background:linear-gradient(180deg,#09243c,#071a2d);
+    border-radius:9px;
+    padding:6px 8px;
+}
+div[data-testid="stMetricLabel"] p{font-size:.68rem;color:#9ec4d9;}
+div[data-testid="stMetricValue"]{font-size:1.15rem;color:#dff8ff;}
+.stButton>button{
+    border:1px solid #0d5f96;
+    border-radius:8px;
+    background:#082139;
+    color:#e7f8ff;
+    font-weight:700;
+    min-height:38px;
+}
+.stButton>button:hover{
+    border-color:#27cfff;
+    color:white;
+    background:#0a3153;
+}
+[data-baseweb="select"]>div{
+    background:#071c31!important;
+    border-color:#0d4f7e!important;
+}
+[data-testid="stSlider"]{margin-top:-4px;margin-bottom:-7px;}
+[data-testid="stExpander"]{
+    border:1px solid #0d4f7e!important;
+    background:#06182a!important;
+    border-radius:9px!important;
+}
+hr{border-color:rgba(30,110,160,.25);}
+.small-note{color:#7faac3;font-size:.7rem;margin-top:4px;}
+footer{visibility:hidden;}
 </style>
 """, unsafe_allow_html=True)
 
+# ------------------------------------------------------------
+# MODEL
+# ------------------------------------------------------------
 PROFILES = {
-    "Long-range": {"fc": 150.0, "bw": 100.0, "vpk": 28.0, "z": 70.0},
-    "Balanced": {"fc": 300.0, "bw": 180.0, "vpk": 24.0, "z": 60.0},
-    "High-resolution": {"fc": 430.0, "bw": 120.0, "vpk": 18.0, "z": 50.0},
+    "Long Range": {"fc":150.0, "bw":100.0, "vpk":28.0, "z":70.0},
+    "Balanced": {"fc":300.0, "bw":180.0, "vpk":24.0, "z":60.0},
+    "High Resolution": {"fc":430.0, "bw":120.0, "vpk":18.0, "z":50.0},
+    "Eco": {"fc":300.0, "bw":180.0, "vpk":24.0, "z":60.0},
 }
 
 WEIGHTS = {
-    "High Resolution": (0.20, 0.60, 0.20),
-    "Balanced": (0.35, 0.35, 0.30),
-    "Long Range": (0.60, 0.20, 0.20),
-    "Eco": (0.20, 0.15, 0.65),
+    "High Resolution": (0.20,0.60,0.20),
+    "Balanced": (0.35,0.35,0.30),
+    "Long Range": (0.60,0.20,0.20),
+    "Eco": (0.20,0.15,0.65),
 }
 
 DEFAULTS = {
-    "mission": "Balanced",
-    "req_range": 120,
-    "req_res": 0.20,
-    "battery": 120.0,
-    "reserve": 30.0,
-    "pings": 20000,
-    "profile": "Balanced",
-    "temperature": 12.0,
-    "salinity": 35.0,
-    "depth": 100,
-    "turbidity": 10,
-    "ph": 8.0,
-    "sea": 2,
+    "depth":100,
+    "turbidity":10,
+    "temperature":12,
+    "salinity":35,
+    "battery":80,
+    "mission":"Balanced",
+    "req_range":120,
+    "req_res":0.20,
 }
 
-for k, v in DEFAULTS.items():
+for k,v in DEFAULTS.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
 def apply_preset(name):
-    if name == "High Resolution":
-        vals = dict(mission="High Resolution", req_range=80, req_res=0.08, battery=180.0,
-                    reserve=30.0, pings=18000, profile="High-resolution",
-                    temperature=24.0, salinity=35.0, depth=40, turbidity=8)
-    elif name == "Long Range":
-        vals = dict(mission="Long Range", req_range=200, req_res=0.50, battery=220.0,
-                    reserve=40.0, pings=20000, profile="Long-range",
-                    temperature=8.0, salinity=35.0, depth=600, turbidity=15)
-    elif name == "Eco":
-        vals = dict(mission="Eco", req_range=100, req_res=0.35, battery=20.0,
-                    reserve=8.0, pings=40000, profile="Balanced",
-                    temperature=12.0, salinity=35.0, depth=100, turbidity=12)
-    else:
-        vals = dict(mission="Balanced", req_range=120, req_res=0.20, battery=120.0,
-                    reserve=30.0, pings=20000, profile="Balanced",
-                    temperature=12.0, salinity=35.0, depth=100, turbidity=10)
-    for k, v in vals.items():
+    presets = {
+        "reef": dict(depth=40,turbidity=8,temperature=24,salinity=35,battery=90,
+                     mission="High Resolution",req_range=80,req_res=0.08),
+        "deep": dict(depth=600,turbidity=15,temperature=8,salinity=35,battery=70,
+                     mission="Long Range",req_range=200,req_res=0.50),
+        "eco": dict(depth=120,turbidity=12,temperature=18,salinity=35,battery=18,
+                    mission="Eco",req_range=100,req_res=0.35),
+    }
+    for k,v in presets[name].items():
         st.session_state[k] = v
 
-def clamp(x, lo, hi):
-    return max(lo, min(hi, x))
+def sound_speed(T,S,D):
+    return (1448.96 + 4.591*T - 5.304e-2*T*T + 2.374e-4*T*T*T
+            + 1.340*(S-35) + 1.630e-2*D + 1.675e-7*D*D
+            - 1.025e-2*T*(S-35) - 7.139e-13*T*D*D*D)
 
-def sound_speed(T, S, D):
-    return (
-        1448.96 + 4.591*T - 5.304e-2*T*T + 2.374e-4*T*T*T
-        + 1.340*(S-35) + 1.630e-2*D + 1.675e-7*D*D
-        - 1.025e-2*T*(S-35) - 7.139e-13*T*D*D*D
-    )
+def absorption(f,T,S,Dm,pH=8.0):
+    D = Dm/1000.0
+    f1 = 0.78*math.sqrt(max(S,1)/35.0)*math.exp(T/26.0)
+    f2 = 42.0*math.exp(T/17.0)
+    A = 0.106*math.exp((pH-8)/0.56)
+    B = 0.52*(1+T/43.0)*(S/35.0)*math.exp(-D/6.0)
+    C = 0.00049*math.exp(-(T/27.0 + D/17.0))
+    f2s = f*f
+    return A*f1*f2s/(f1*f1+f2s) + B*f2*f2s/(f2*f2+f2s) + C*f2s
 
-def absorption(f_khz, T, S, Dm, pH):
-    D = Dm / 1000.0
-    f1 = 0.78 * math.sqrt(max(S, 1.0)/35.0) * math.exp(T/26.0)
-    f2 = 42.0 * math.exp(T/17.0)
-    A = 0.106 * math.exp((pH-8.0)/0.56)
-    B = 0.52 * (1.0 + T/43.0) * (S/35.0) * math.exp(-D/6.0)
-    C = 0.00049 * math.exp(-(T/27.0 + D/17.0))
-    f2sq = f_khz * f_khz
-    return A*f1*f2sq/(f1*f1 + f2sq) + B*f2*f2sq/(f2*f2 + f2sq) + C*f2sq
+def energy_j(amp,dur_ms,p):
+    vrms = amp*p["vpk"]/math.sqrt(2)
+    power = (vrms*vrms)/max(p["z"],1)
+    return (power/0.82)*(dur_ms/1000.0)
 
-def energy_j(amp, dur_ms, max_vpk, z_ohm, eff=0.82):
-    vrms = amp * max_vpk / math.sqrt(2.0)
-    power = (vrms*vrms) / max(z_ohm, 1.0)
-    return (power / max(eff, 0.05)) * (dur_ms/1000.0)
-
-def range_margin(cand, env):
-    tl = 20.0 * math.log10(max(env["range"], 1.0)) + cand["alpha"] * (env["range"]/1000.0)
-    amp_db = 20.0 * math.log10(max(cand["amp"], 0.01))
-    pg = 10.0 * math.log10(max(cand["bw"]*1000.0*(cand["dur"]/1000.0), 1.0))
-    turbidity_penalty = 0.02 * env["turbidity"]
-    received = 190.0 + amp_db - 2.0*tl - 25.0 - 70.0 - env["sea"] - turbidity_penalty + 12.0 + pg
-    return received - 10.0
-
-def optimize(env, hw):
-    fcs = [100,150,200,250,300,350,400,450,500]
-    bws = [40,80,120,180]
-    durs = [0.5,1.0,2.0,3.0]
-    amps = [0.3,0.5,0.7,0.9]
-
-    band_lo = max(100.0, hw["fc"] - hw["bw"]/2.0)
-    band_hi = min(500.0, hw["fc"] + hw["bw"]/2.0)
-    budget = max(0.0, env["battery"] - env["reserve"]) * 3600.0 / max(env["pings"], 1)
-
-    reasons = {"Transducer band": 0, "Resolution": 0, "Range margin": 0, "Energy budget": 0, "DAC sampling": 0}
-    feasible = []
+def optimize(env,profile):
+    fc_lo = profile["fc"]-profile["bw"]/2
+    fc_hi = profile["fc"]+profile["bw"]/2
+    fcs=[100,150,200,250,300,350,400,450,500]
+    bws=[40,80,120,180]
+    durs=[0.5,1.0,2.0,3.0]
+    amps=[0.3,0.5,0.7,0.9]
+    candidates=[]
+    reject={"band":0,"resolution":0,"range":0,"energy":0}
+    # 120 Wh nominal pack, 20% reserve, mission ping count assumption.
+    remaining_wh = 120.0*env["battery"]/100.0
+    reserve_wh = 24.0
+    ping_plan = 20000
+    budget = max(0.0,remaining_wh-reserve_wh)*3600/max(ping_plan,1)
 
     for fc in fcs:
         for bw in bws:
             for dur in durs:
                 for amp in amps:
-                    lo, hi = fc-bw/2.0, fc+bw/2.0
-                    if lo < band_lo or hi > band_hi:
-                        reasons["Transducer band"] += 1
+                    lo,hi=fc-bw/2,fc+bw/2
+                    if lo<fc_lo or hi>fc_hi:
+                        reject["band"]+=1
                         continue
-                    if 10_000.0 / max(hi,1.0) < 12.0:
-                        reasons["DAC sampling"] += 1
+                    res=env["c"]/(2*bw*1000.0)
+                    if res>env["req_res"]:
+                        reject["resolution"]+=1
                         continue
-
-                    c = {"fc":float(fc), "bw":float(bw), "dur":float(dur), "amp":float(amp)}
-                    c["alpha"] = absorption(fc, env["T"], env["S"], env["D"], env["pH"])
-                    c["resolution"] = env["c"] / (2.0*bw*1000.0)
-                    if c["resolution"] > env["resolution"]:
-                        reasons["Resolution"] += 1
+                    a=absorption(fc,env["T"],env["S"],env["D"])
+                    tl=20*math.log10(max(env["range"],1))+a*(env["range"]/1000)
+                    pg=10*math.log10(max(bw*1000*(dur/1000),1))
+                    amp_db=20*math.log10(max(amp,0.01))
+                    margin=190+amp_db-2*tl-25-70-2-0.02*env["turbidity"]+12+pg-10
+                    if margin<0:
+                        reject["range"]+=1
                         continue
-
-                    c["margin"] = range_margin(c, env)
-                    if c["margin"] < 0:
-                        reasons["Range margin"] += 1
+                    e=energy_j(amp,dur,profile)
+                    if e>budget:
+                        reject["energy"]+=1
                         continue
+                    candidates.append(dict(fc=fc,bw=bw,dur=dur,amp=amp,res=res,margin=margin,energy=e,alpha=a))
 
-                    c["energy"] = energy_j(amp, dur, hw["vpk"], hw["z"])
-                    if c["energy"] > budget:
-                        reasons["Energy budget"] += 1
-                        continue
+    if not candidates:
+        return None,reject,budget,[]
 
-                    feasible.append(c)
+    max_margin=max(x["margin"] for x in candidates)
+    max_energy=max(x["energy"] for x in candidates)
+    min_res=min(x["res"] for x in candidates)
+    wr,wq,we=WEIGHTS[env["mission"]]
+    for x in candidates:
+        rhat=max(0,min(1,x["margin"]/max(max_margin,1e-9)))
+        qhat=max(0,min(1,min_res/max(x["res"],1e-9)))
+        ehat=max(0,min(1,x["energy"]/max(max_energy,1e-9)))
+        x["score"]=wr*rhat+wq*qhat-we*ehat
+    candidates.sort(key=lambda x:x["score"],reverse=True)
+    return candidates[0],reject,budget,candidates
 
-    if not feasible:
-        return None, budget, reasons, (band_lo, band_hi), []
+def waveform(choice):
+    if not choice:
+        return np.array([]),np.array([])
+    fs=10_000_000
+    dur_s=choice["dur"]/1000.0
+    t=np.arange(int(fs*dur_s))/fs
+    f0=(choice["fc"]-choice["bw"]/2)*1000
+    f1=(choice["fc"]+choice["bw"]/2)*1000
+    y=chirp(t,f0=f0,f1=f1,t1=dur_s,method="linear")
+    y*=np.hanning(len(y))*choice["amp"]
+    return t,y
 
-    max_margin = max(c["margin"] for c in feasible)
-    max_energy = max(c["energy"] for c in feasible)
-    min_res = min(c["resolution"] for c in feasible)
-    wr, wq, we = WEIGHTS[env["mission"]]
+# ------------------------------------------------------------
+# HEADER
+# ------------------------------------------------------------
+st.markdown("""
+<div class="ap-header">
+  <div class="ap-logo">🌊</div>
+  <div>
+    <div class="ap-title">Aqua<span>Pulse</span></div>
+    <div class="ap-sub">Environment-Aware · Mission-Aware · Energy-Aware Software-Defined Sonar Transmitter</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
-    for c in feasible:
-        rhat = clamp(c["margin"]/max(max_margin,1e-9), 0, 1)
-        qhat = clamp(min_res/max(c["resolution"],1e-9), 0, 1)
-        ehat = clamp(c["energy"]/max(max_energy,1e-9), 0, 1)
-        c["score"] = wr*rhat + wq*qhat - we*ehat
+# ------------------------------------------------------------
+# QUICK DEMO ROW
+# ------------------------------------------------------------
+q0,q1,q2,q3 = st.columns([.9,1,1,1])
+with q0:
+    st.markdown('<div class="panel-title" style="padding-top:10px">Quick Demo Scenarios</div>', unsafe_allow_html=True)
+if q1.button("🌿 Clear Shallow Reef", use_container_width=True):
+    apply_preset("reef"); st.rerun()
+if q2.button("🌊 Deep-Water Survey", use_container_width=True):
+    apply_preset("deep"); st.rerun()
+if q3.button("🔋 Low Battery Mission", use_container_width=True):
+    apply_preset("eco"); st.rerun()
 
-    feasible.sort(key=lambda x: x["score"], reverse=True)
-    return feasible[0], budget, reasons, (band_lo, band_hi), feasible
+# ------------------------------------------------------------
+# MAIN DASHBOARD
+# ------------------------------------------------------------
+controls, body = st.columns([1.0,3.55], gap="small")
 
-def make_wave(choice):
-    if choice is None:
-        return np.array([]), np.array([])
-    fs = 10_000_000
-    n = int(choice["dur"]/1000.0 * fs)
-    t = np.arange(n)/fs
-    f0 = (choice["fc"] - choice["bw"]/2.0)*1000.0
-    f1 = (choice["fc"] + choice["bw"]/2.0)*1000.0
-    sig = chirp(t, f0=f0, f1=f1, t1=choice["dur"]/1000.0, method="linear")
-    sig *= np.hanning(len(sig))
-    sig *= choice["amp"]
-    return t, sig
+with controls:
+    st.markdown('<div class="panel-title">Operating Conditions</div>', unsafe_allow_html=True)
+    depth=st.slider("Depth (m)",0,1000,step=10,key="depth")
+    turbidity=st.slider("Turbidity",0,100,step=1,key="turbidity")
+    temperature=st.slider("Temperature (°C)",-2,35,step=1,key="temperature")
+    salinity=st.slider("Salinity (PSU)",25,40,step=1,key="salinity")
+    battery=st.slider("Battery (%)",0,100,step=1,key="battery")
+    mission=st.selectbox("Mission Mode",list(WEIGHTS.keys()),key="mission")
+    with st.expander("Mission target"):
+        req_range=st.slider("Range (m)",20,500,step=10,key="req_range")
+        req_res=st.slider("Resolution (m)",0.05,1.00,step=0.05,key="req_res")
 
-st.markdown('<div class="ap-title">AquaPulse</div>', unsafe_allow_html=True)
-st.markdown('<div class="ap-sub">A clean interactive demo of an adaptive, energy-aware sonar transmitter for AUVs.</div>', unsafe_allow_html=True)
+with body:
+    c=sound_speed(temperature,salinity,depth)
+    profile=PROFILES[mission]
+    env=dict(T=temperature,S=salinity,D=depth,turbidity=turbidity,battery=battery,
+             mission=mission,range=req_range,req_res=req_res,c=c)
+    choice,reject,budget,candidates=optimize(env,profile)
 
-p1, p2, p3, p4 = st.columns(4)
-if p1.button("Balanced", use_container_width=True):
-    apply_preset("Balanced"); st.rerun()
-if p2.button("High Resolution", use_container_width=True):
-    apply_preset("High Resolution"); st.rerun()
-if p3.button("Long Range", use_container_width=True):
-    apply_preset("Long Range"); st.rerun()
-if p4.button("Eco / Low Battery", use_container_width=True):
-    apply_preset("Eco"); st.rerun()
+    top1,top2,top3=st.columns([1.05,1.15,1.35],gap="small")
 
-st.sidebar.header("Mission Setup")
-mission = st.sidebar.selectbox("Mission", list(WEIGHTS.keys()), key="mission")
-req_range = st.sidebar.slider("Required range (m)", 10, 500, step=5, key="req_range")
-req_res = st.sidebar.slider("Required resolution (m)", 0.02, 1.00, step=0.01, key="req_res")
+    with top1:
+        st.markdown('<div class="panel-title">🌊 Environment & Mission</div>', unsafe_allow_html=True)
+        st.markdown(f"""
+        <div class="panel">
+          <div class="value-line"><span>Depth</span><b>{depth} m</b></div>
+          <div class="value-line"><span>Turbidity</span><b>{turbidity}</b></div>
+          <div class="value-line"><span>Temperature</span><b>{temperature} °C</b></div>
+          <div class="value-line"><span>Salinity</span><b>{salinity} PSU</b></div>
+          <div class="value-line"><span>Battery</span><b>{battery}%</b></div>
+          <div class="value-line"><span>Mission</span><b>{mission}</b></div>
+        </div>
+        """,unsafe_allow_html=True)
 
-st.sidebar.header("Energy")
-battery = st.sidebar.slider("Remaining energy (Wh)", 5.0, 500.0, step=5.0, key="battery")
-reserve = st.sidebar.slider("Reserve energy (Wh)", 0.0, 150.0, step=5.0, key="reserve")
-pings = st.sidebar.slider("Planned pings", 100, 100000, step=100, key="pings")
+    with top2:
+        st.markdown('<div class="panel-title">⚙ Adaptive Decision Engine</div>', unsafe_allow_html=True)
+        if choice:
+            reasons=[
+                f"Profile limits transmission to {profile['fc']-profile['bw']/2:.0f}–{profile['fc']+profile['bw']/2:.0f} kHz.",
+                f"{mission} weighting selects the highest-scoring valid candidate.",
+                f"Chosen ping meets {req_range} m modeled range and {req_res:.2f} m resolution targets."
+            ]
+        else:
+            reasons=[
+                "No candidate satisfies every hard constraint.",
+                "Relax range/resolution or increase available battery.",
+                "Transmission is inhibited instead of forcing an invalid waveform."
+            ]
+        st.markdown('<div class="panel">'+''.join([f'<div class="decision">{r}</div>' for r in reasons])+'</div>',unsafe_allow_html=True)
 
-st.sidebar.header("Hardware")
-profile_name = st.sidebar.selectbox("Transducer profile", list(PROFILES.keys()), key="profile")
-profile = PROFILES[profile_name]
+    with top3:
+        st.markdown('<div class="panel-title">〽 Selected Transmit Configuration</div>', unsafe_allow_html=True)
+        if choice:
+            a,b,c1,d=st.columns(4)
+            a.metric("Waveform","LFM Chirp")
+            b.metric("Start",f"{choice['fc']-choice['bw']/2:.0f} kHz")
+            c1.metric("Stop",f"{choice['fc']+choice['bw']/2:.0f} kHz")
+            d.metric("Bandwidth",f"{choice['bw']:.0f} kHz")
+            e,f,g,h=st.columns(4)
+            e.metric("Centre",f"{choice['fc']:.0f} kHz")
+            f.metric("Pulse",f"{choice['dur']:.1f} ms")
+            g.metric("Amplitude",f"{choice['amp']*100:.0f}%")
+            h.metric("Sample Rate","10 MS/s")
+        else:
+            st.error("TX INHIBIT — no valid waveform")
 
-with st.sidebar.expander("Environment"):
-    temperature = st.slider("Temperature (°C)", -2.0, 35.0, step=0.5, key="temperature")
-    salinity = st.slider("Salinity (PSU)", 25.0, 40.0, step=0.5, key="salinity")
-    depth = st.slider("Depth (m)", 0, 2000, step=10, key="depth")
-    turbidity = st.slider("Turbidity proxy", 0, 100, step=1, key="turbidity")
+    t,sig=waveform(choice)
 
-c = sound_speed(temperature, salinity, depth)
-env = {
-    "T": temperature, "S": salinity, "D": depth, "pH": st.session_state.ph,
-    "turbidity": turbidity, "sea": st.session_state.sea,
-    "mission": mission, "range": req_range, "resolution": req_res,
-    "battery": battery, "reserve": reserve, "pings": pings, "c": c,
-}
-choice, budget, reasons, band, feasible = optimize(env, profile)
-
-if choice:
-    st.markdown('<div class="ap-note ap-good"><b>FEASIBLE</b> · AquaPulse found a valid waveform for the current mission.</div>', unsafe_allow_html=True)
-else:
-    st.markdown('<div class="ap-note ap-bad"><b>TX INHIBIT</b> · No waveform currently satisfies all mission, energy and hardware limits.</div>', unsafe_allow_html=True)
-
-m1, m2, m3, m4, m5, m6 = st.columns(6)
-if choice:
-    m1.metric("Centre", f"{choice['fc']:.0f} kHz")
-    m2.metric("Bandwidth", f"{choice['bw']:.0f} kHz")
-    m3.metric("Pulse", f"{choice['dur']:.1f} ms")
-    m4.metric("Drive", f"{choice['amp']*100:.0f}%")
-    m5.metric("Energy / Ping", f"{choice['energy']*1000:.2f} mJ")
-    m6.metric("Modeled Margin", f"{choice['margin']:+.1f} dB")
-else:
-    for col, label in zip([m1,m2,m3,m4,m5,m6], ["Centre","Bandwidth","Pulse","Drive","Energy / Ping","Modeled Margin"]):
-        col.metric(label, "—")
-
-left, right = st.columns([1.45, 1])
-
-with left:
-    tabs = st.tabs(["Waveform", "Spectrum"])
-    t, sig = make_wave(choice)
-
-    with tabs[0]:
-        fig = go.Figure()
+    ch1,ch2,ch3=st.columns([1.15,.95,1.05],gap="small")
+    with ch1:
+        st.markdown('<div class="panel-title">〰 Generated Transmit Waveform</div>', unsafe_allow_html=True)
+        fig=go.Figure()
         if sig.size:
-            stride = max(1, len(sig)//5000)
-            fig.add_trace(go.Scatter(x=t[::stride]*1000, y=sig[::stride], mode="lines"))
-        fig.update_layout(height=340, margin=dict(l=20,r=20,t=20,b=20), xaxis_title="Time (ms)", yaxis_title="Normalized amplitude", showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
+            stride=max(1,len(sig)//3000)
+            fig.add_trace(go.Scatter(x=t[::stride]*1000,y=sig[::stride],mode="lines",line=dict(color="#37c7ff",width=1.5)))
+        fig.update_layout(height=255,template="plotly_dark",paper_bgcolor="#071c31",plot_bgcolor="#071c31",
+                          margin=dict(l=38,r=10,t=8,b=35),xaxis_title="Time (ms)",yaxis_title="Amplitude",
+                          font=dict(size=10,color="#bfe8ff"),showlegend=False)
+        st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
 
-    with tabs[1]:
-        fig = go.Figure()
+    with ch2:
+        st.markdown('<div class="panel-title">▥ Frequency Spectrum</div>', unsafe_allow_html=True)
+        fig=go.Figure()
         if sig.size:
-            fft_data = np.fft.rfft(sig)
-            freq = np.fft.rfftfreq(len(sig), 1/10_000_000)
-            mag = np.abs(fft_data)
-            mask = freq <= 600000
-            fig.add_trace(go.Scatter(x=freq[mask]/1000, y=mag[mask], mode="lines"))
-        fig.update_layout(height=340, margin=dict(l=20,r=20,t=20,b=20), xaxis_title="Frequency (kHz)", yaxis_title="Magnitude", showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
+            spec=np.abs(np.fft.rfft(sig))
+            freq=np.fft.rfftfreq(len(sig),1/10_000_000)
+            mask=freq<=600000
+            fig.add_trace(go.Scatter(x=freq[mask]/1000,y=spec[mask],mode="lines",line=dict(color="#ffb11b",width=2)))
+        fig.update_layout(height=255,template="plotly_dark",paper_bgcolor="#071c31",plot_bgcolor="#071c31",
+                          margin=dict(l=38,r=10,t=8,b=35),xaxis_title="Frequency (kHz)",yaxis_title="Magnitude",
+                          font=dict(size=10,color="#bfe8ff"),showlegend=False)
+        st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
 
-with right:
-    st.markdown("### Why this waveform?")
-    if choice:
-        st.write(f"**{choice['fc']:.0f} kHz / {choice['bw']:.0f} kHz BW / {choice['dur']:.1f} ms** was selected because it:")
-        st.write(f"✓ stays inside the **{band[0]:.0f}–{band[1]:.0f} kHz** transducer band")
-        st.write(f"✓ meets the **{req_res:.2f} m** resolution target")
-        st.write(f"✓ keeps a positive modeled margin at **{req_range} m**")
-        st.write("✓ stays within the available energy-per-ping budget")
-        st.write(f"✓ is the highest-scoring valid candidate in **{mission}** mode")
-    else:
-        st.write("No candidate is currently valid.")
-        st.write("Try lowering required range, relaxing resolution, increasing energy, or changing transducer profile.")
+    with ch3:
+        st.markdown('<div class="panel-title">▦ Time-Frequency Spectrogram</div>', unsafe_allow_html=True)
+        if sig.size:
+            nper=min(1024,max(128,len(sig)//16))
+            fsp,tsp,Sxx=spectrogram(sig,10_000_000,nperseg=nper,noverlap=int(nper*.75))
+            mask=fsp<=600000
+            fig=go.Figure(go.Heatmap(x=tsp*1000,y=fsp[mask]/1000,z=10*np.log10(Sxx[mask]+1e-12),
+                                     colorscale="Turbo",showscale=False))
+        else:
+            fig=go.Figure()
+        fig.update_layout(height=255,template="plotly_dark",paper_bgcolor="#071c31",plot_bgcolor="#071c31",
+                          margin=dict(l=38,r=10,t=8,b=35),xaxis_title="Time (ms)",yaxis_title="Frequency (kHz)",
+                          font=dict(size=10,color="#bfe8ff"))
+        st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
 
-    st.markdown("### Fixed vs AquaPulse")
-    if choice:
-        fixed = {"fc": profile["fc"], "bw": min(120.0, profile["bw"]), "dur": 2.0, "amp": 0.8}
-        fixed["alpha"] = absorption(fixed["fc"], temperature, salinity, depth, st.session_state.ph)
-        fixed["resolution"] = c/(2.0*fixed["bw"]*1000.0)
-        fixed["margin"] = range_margin(fixed, env)
-        fixed["energy"] = energy_j(fixed["amp"], fixed["dur"], profile["vpk"], profile["z"])
-        c1, c2 = st.columns(2)
-        c1.metric("Fixed Energy", f"{fixed['energy']*1000:.2f} mJ")
-        c2.metric("AquaPulse Energy", f"{choice['energy']*1000:.2f} mJ")
-        c1.metric("Fixed Resolution", f"{fixed['resolution']*100:.1f} cm")
-        c2.metric("AquaPulse Resolution", f"{choice['resolution']*100:.1f} cm")
+    en,status=st.columns([2.1,1],gap="small")
+    with en:
+        st.markdown('<div class="panel-title">🔋 Energy-Aware Operation</div>', unsafe_allow_html=True)
+        if choice:
+            fixed_energy=energy_j(.8,2.0,profile)
+            adaptive=choice["energy"]
+            delta=(fixed_energy-adaptive)/max(fixed_energy,1e-9)*100
+            e1,e2,e3=st.columns(3)
+            e1.metric("Adaptive Energy",f"{adaptive*1000:.2f} mJ")
+            e2.metric("Fixed Baseline",f"{fixed_energy*1000:.2f} mJ")
+            e3.metric("Relative Change",f"{delta:+.1f}%")
+            st.markdown('<div class="small-note">Electrical comparison only. Underwater efficiency is not measured here.</div>',unsafe_allow_html=True)
+        else:
+            st.info("No valid transmission, so energy output is inhibited.")
 
-with st.expander("Technical details"):
-    d1, d2, d3 = st.columns(3)
-    d1.metric("Sound Speed", f"{c:.1f} m/s")
-    d2.metric("Per-Ping Budget", f"{budget*1000:.2f} mJ")
-    d3.metric("Feasible Candidates", f"{len(feasible)}")
-    st.write("**Rejected candidates**")
-    st.write(" · ".join([f"{k}: {v}" for k, v in reasons.items()]))
-    if choice:
-        st.write(
-            f"Selected score: **{choice['score']:.3f}** · "
-            f"Estimated resolution: **{choice['resolution']*100:.1f} cm** · "
-            f"Absorption: **{choice['alpha']:.1f} dB/km**"
-        )
+    with status:
+        if choice:
+            st.markdown("""
+            <div class="status-good">
+              <div class="status-main">✓ SYSTEM READY</div>
+              <div class="status-sub">Adaptive transmitter operating normally.</div>
+            </div>
+            """,unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div class="status-bad">
+              <div class="status-main">TX INHIBIT</div>
+              <div class="status-sub">Mission or hardware limits are not satisfied.</div>
+            </div>
+            """,unsafe_allow_html=True)
 
-st.caption(
-    "Simulation only: acoustic range and efficiency are modeled, not measured. "
-    "Real performance requires a characterized transducer and water-tank validation."
-)
+st.caption("AquaPulse · SIH software prototype · modeled acoustic performance only; real range/efficiency require transducer and tank validation.")
